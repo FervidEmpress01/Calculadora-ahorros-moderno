@@ -1,85 +1,96 @@
-import time
+from flask import Flask, render_template, request
 import pandas as pd
+import matplotlib
+# Configuración IMPORTANTE para servidores (evita errores de pantalla)
+matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
+import io
+import base64
 from scipy import optimize
 
-# Definicion de la función de interés
+# --- AQUÍ INICIAMOS LA APP WEB ---
+app = Flask(__name__)
 
+# --- TU LÓGICA MATEMÁTICA ---
 def funcion_interes(i, v0, a, n, vf_deseado):
-    # Si la tasa es 0, se devuelve el monto multiplicado por los periodos
     if i == 0: 
         return (v0 + a * n) - vf_deseado
-    # Cálculo del monto final con la fórmula del valor futuro
     monto_calculado = (v0 * (1 + i)**n) + (a * (((1 + i)**n - 1) / i))
     return monto_calculado - vf_deseado
 
-def generar_reportes(v0, a, n, tasa, nombre_archivo="grafica.png"):
+# --- RUTA PRINCIPAL (LO QUE VE EL NAVEGADOR) ---
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    resultado = None
+    tabla_html = None
+    imagen_grafica = None
+    error = None
 
-    # Genera la tabla y guarda la imagen de la gráfica
-    lista_datos = []
-    saldo_actual = v0
-    sin_interes = v0
-    
-    # Cálculo para cada periodo
-    for t in range(1, n + 1):
-        interes_ganado = saldo_actual * tasa
-        saldo_final = saldo_actual + interes_ganado + a
-        sin_interes += a
-        
-        # Almacenar datos
-        lista_datos.append({
-            'Periodo': t,
-            'Saldo Inicial': saldo_actual,
-            'Interés Ganado': interes_ganado,
-            'Aporte': a,
-            'Saldo Final': saldo_final,
-            'Sin Interés': sin_interes
-        })
-        saldo_actual = saldo_final
+    if request.method == 'POST':
+        try:
+            # 1. Obtener datos del formulario HTML
+            v0 = float(request.form['v0'])
+            a = float(request.form['aporte'])
+            n = int(request.form['periodos'])
+            vf = float(request.form['vf'])
 
-    df = pd.DataFrame(lista_datos)
-    
-    # Exportar a HTML
-    html = df.to_html(classes='table table-striped', index=False, float_format=lambda x: '${:,.2f}'.format(x))
-    with open("tabla_resultados.html", "w") as f:
-        f.write(html)
-        
-    # Generar Gráfica 
-    plt.figure(figsize=(10, 6))
-    plt.plot(df['Periodo'], df['Saldo Final'], 'g-o', label='Con Interés')
-    plt.plot(df['Periodo'], df['Sin Interés'], 'k--', label='Sin Interés')
-    plt.title(f'Proyección de Ahorro ({n} periodos)')
-    plt.xlabel('Periodo')
-    plt.ylabel('Monto ($)')
-    plt.legend()
-    plt.grid(True)
-    plt.savefig(nombre_archivo)
-    plt.close()
-    
-    return df
+            # 2. Calcular con Scipy
+            # Buscamos tasa entre 0.0001% y 100%
+            tasa = optimize.bisect(funcion_interes, 1e-6, 1.0, args=(v0, a, n, vf))
+            tasa_porcentaje = round(tasa * 100, 4)
 
-if __name__ == "__main__":
-    print("--- CALCULADORA DE INTERÉS REAL ---")
-    
-    V0 = 1000.0
-    A = 100.0
-    N = 12
-    VF = 2500.0
-    
-    print("Calculando...")
-    inicio = time.time()
-    
-    try:
-        # Calculo de la tasa periódica mediante metodo de bisección
-        tasa_periodica = optimize.bisect(funcion_interes, 1e-6, 1.0, args=(V0, A, N, VF))
-        tiempo_total = time.time() - inicio
-        
-        print(f"\nResultados encontrados en {tiempo_total:.6f} segundos.")
-        print(f"Tasa periódica necesaria: {tasa_periodica * 100:.4f}%")
-        
-        # Generar archivos
-        df_resultados = generar_reportes(V0, A, N, tasa_periodica)
-        print("-> Se ha generado 'tabla_resultados.html' y 'grafica.png'")
-        
-    except ValueError:
-        print("Error: No es posible alcanzar esa meta con los valores dados.")
+            # 3. Generar Tabla con Pandas
+            lista_datos = []
+            saldo = v0
+            sin_int = v0
+            for t in range(1, n + 1):
+                interes = saldo * tasa
+                saldo_fin = saldo + interes + a
+                sin_int += a
+                lista_datos.append({
+                    'Periodo': t, 
+                    'Saldo Inicial': saldo, 
+                    'Interés': interes, 
+                    'Aporte': a, 
+                    'Saldo Final': saldo_fin
+                })
+                saldo = saldo_fin
+            
+            df = pd.DataFrame(lista_datos)
+            
+            # Convertir a HTML (usando clases de Bootstrap)
+            tabla_html = df.to_html(classes='table table-striped table-hover', 
+                                  float_format=lambda x: f"${x:,.2f}", index=False)
+
+            # 4. Generar Gráfica
+            plt.figure(figsize=(8, 4))
+            plt.plot(df['Periodo'], df['Saldo Final'], label='Con Interés Compuesto', color='green')
+            plt.plot(df['Periodo'], [sin_int/n * t + v0 for t in df['Periodo']], '--', label='Sin Interés', color='gray')
+            plt.title(f'Proyección a {n} periodos')
+            plt.xlabel('Periodo')
+            plt.ylabel('Monto Acumulado ($)')
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+            
+            # Guardar gráfica en memoria (para web)
+            img = io.BytesIO()
+            plt.savefig(img, format='png', bbox_inches='tight')
+            img.seek(0)
+            imagen_grafica = base64.b64encode(img.getvalue()).decode()
+            plt.close()
+
+            resultado = tasa_porcentaje
+
+        except ValueError:
+            error = "No es posible alcanzar esa meta con los valores dados (Intenta aumentar el tiempo o el aporte)."
+        except Exception as e:
+            error = f"Ocurrió un error inesperado: {e}"
+
+    return render_template('index.html', 
+                           tasa=resultado, 
+                           tabla=tabla_html, 
+                           grafica=imagen_grafica, 
+                           error=error)
+
+if __name__ == '__main__':
+    app.run(debug=True)
