@@ -6,7 +6,6 @@
     <title>Calculadora de Ahorro MN25B</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        /* Estilo para que las alertas no muevan tanto el contenido */
         #alertPlaceholder .alert {
             box-shadow: 0 4px 14px rgba(0,0,0,0.08);
         }
@@ -21,30 +20,26 @@
         <div class="col-md-4">
             <div class="card p-4 shadow-sm">
                 <h4>Ingresa tus datos</h4>
-
                 <div id="alertPlaceholder"></div>
 
                 <form method="POST" id="calcForm">
                     <div class="mb-3">
                         <label>Monto Inicial ($)</label>
-                        <input type="number" step="any" name="v0" id="v0" class="form-control numeric" required placeholder="Ej: 1000" value="{{ request.form.v0 }}">
+                        <input type="number" step="any" name="v0" id="v0" class="form-control numeric money-limit" required placeholder="Ej: 1000" value="{{ request.form.v0 }}" max="490800000000">
                     </div>
 
                     <div class="mb-3">
                         <label>Aporte Periódico ($)</label>
-                        <input type="number" step="any" name="aporte" id="aporte" class="form-control numeric" required placeholder="Ej: 100" value="{{ request.form.aporte }}">
+                        <input type="number" step="any" name="aporte" id="aporte" class="form-control numeric money-limit" required placeholder="Ej: 100" value="{{ request.form.aporte }}" max="490800000000">
                     </div>
 
                     <div class="mb-3">
                         <label>Frecuencia de Aporte</label>
                         <select name="frecuencia" id="selectorFrecuencia" class="form-select">
                             <option value="Semanal" selected>Semanal</option>
-                            <option value="Quincenal">Quincenal</option>
                             <option value="Mensual">Mensual</option>
                             <option value="Bimestral">Bimestral</option>
                             <option value="Trimestral">Trimestral</option>
-                            <option value="Semestral">Semestral</option>
-                            <option value="Anual">Anual</option>
                         </select>
                     </div>
 
@@ -55,7 +50,7 @@
 
                     <div class="mb-3">
                         <label>Meta Final Deseada ($)</label>
-                        <input type="number" step="any" name="vf" id="vf" class="form-control numeric" required placeholder="Ej: 2500" value="{{ request.form.vf }}">
+                        <input type="number" step="any" name="vf" id="vf" class="form-control numeric money-limit" required placeholder="Ej: 2500" value="{{ request.form.vf }}" max="490800000000">
                     </div>
 
                     <button type="submit" class="btn btn-primary w-100">Calcular Tasa Necesaria</button>
@@ -100,11 +95,13 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-// --- 1. LÓGICA DE VALIDACIÓN (TU CÓDIGO) ---
+// --- CONFIGURACIÓN ---
+const MAX_WEALTH = 490800000000; // 490.800 Millones
+
 const alertPlaceholder = document.getElementById('alertPlaceholder');
 let alertTimeout = null;
 
-function showBootstrapAlert(message, type = 'warning', timeout = 3500) {
+function showBootstrapAlert(message, type = 'warning', timeout = 4000) {
     clearTimeout(alertTimeout);
     alertPlaceholder.innerHTML = `
         <div class="alert alert-${type} alert-dismissible fade show" role="alert">
@@ -143,7 +140,7 @@ function sanitizeValue(value, allowDecimal = true) {
     return value;
 }
 
-// Validación Decimales
+// 1. VALIDACIÓN CAMPOS NUMÉRICOS (DECIMALES)
 document.querySelectorAll('input.numeric').forEach(inp => {
     inp.addEventListener('keydown', (e) => {
         if (!isAllowedKey(e)) {
@@ -156,17 +153,29 @@ document.querySelectorAll('input.numeric').forEach(inp => {
             }
         }
     });
+    
     inp.addEventListener('input', (e) => {
         const original = inp.value;
         const cleaned = sanitizeValue(original, true);
+        
+        // Validación de caracteres extraños
         if (original !== cleaned) {
             inp.value = cleaned;
             showBootstrapAlert('Entrada corregida: caracteres inválidos eliminados.', 'warning');
         }
+
+        // --- VALIDACIÓN DE ELON MUSK (LÍMITE MÁXIMO) ---
+        if (inp.classList.contains('money-limit')) {
+            const numericVal = parseFloat(cleaned);
+            if (numericVal > MAX_WEALTH) {
+                inp.value = MAX_WEALTH; // Lo truncamos al máximo
+                showBootstrapAlert('¡Alto ahí! El valor no puede superar los $490.800 Millones (Estimado de Elon Musk).', 'danger');
+            }
+        }
     });
 });
 
-// Validación Enteros
+// 2. VALIDACIÓN ENTEROS (PERIODOS)
 document.querySelectorAll('input.numeric-int').forEach(inp => {
     inp.addEventListener('keydown', (e) => {
         if (!isAllowedKey(e)) {
@@ -189,12 +198,15 @@ document.querySelectorAll('input.numeric-int').forEach(inp => {
     });
 });
 
-// ---LÓGICA DE FRECUENCIA  ---
+// 3. CAMBIO DE TÍTULO SEGÚN FRECUENCIA
 const selector = document.getElementById('selectorFrecuencia');
 const label = document.getElementById('labelPeriodos');
+// Solo dejamos los que están en el HTML
 const mapeoNombres = {
-    'Semanal': 'Semanas', 'Quincenal': 'Quincenas', 'Mensual': 'Meses',
-    'Bimestral': 'Bimestres', 'Trimestral': 'Trimestres', 'Semestral': 'Semestres', 'Anual': 'Años'
+    'Semanal': 'Semanas', 
+    'Mensual': 'Meses',
+    'Bimestral': 'Bimestres', 
+    'Trimestral': 'Trimestres'
 };
 
 selector.addEventListener('change', function() {
