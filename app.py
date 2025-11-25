@@ -14,7 +14,7 @@ app = Flask(__name__)
 # Funcion para encontrar la tasa de interes
 def funcion_interes(i, v0, a, n, vf_deseado):
     if i == 0: 
-        # Si i es 0, es v0 + (n-1) aportes, porque el primero no se hace
+        # Si i es 0, es v0 + (n-1) aportes, ya que no se realiza desde el primero
         return (v0 + a * (n - 1)) - vf_deseado
     
     # El Valor Inicial crece por n periodos
@@ -33,6 +33,7 @@ def funcion_interes(i, v0, a, n, vf_deseado):
 @app.route('/', methods=['GET', 'POST'])
 def index():
     resultado = None
+    resultado_anual = None
     tabla_html = None
     imagen_grafica = None
     error = None
@@ -46,7 +47,7 @@ def index():
             vf = float(request.form['vf'])
             
             # Capturamos la frecuencia del formulario
-            freq_nombre = request.form.get('frecuencia', 'Periódica')
+            freq_nombre = request.form.get('frecuencia', 'mensual') # Default ajustado a minúscula
 
             # Restricciones de entrada
             if v0 < 50:
@@ -62,13 +63,26 @@ def index():
                 tasa = optimize.bisect(funcion_interes, 1e-6, 1, args=(v0, a, n, vf))
                 tasa_porcentaje = round(tasa * 100, 4)
 
+
+                # Preiodos representados anualmente
+                periodos_anuales = {
+                    'semanal': 52,
+                    'mensual': 12,
+                    'bimestral': 6,
+                    'trimestral': 4
+                }
+
+                factor_anual = periodos_anuales.get(freq_nombre, 1)
+                tasa_anual_porcentaje = round(tasa * factor_anual * 100, 4)
+                resultado_anual = tasa_anual_porcentaje
+
                 # Generar Tabla de Amortización
                 lista_datos = []
                 saldo = v0
                 sin_int = v0
                 
                 for t in range(1, n + 1):
-                    # CORRECCIÓN: Semana 1 aporte es 0, Semana 2 en adelante es 'a'
+                    # Semana 1 aporte es 0, Semana 2 en adelante es 'a'
                     if t == 1:
                         aporte_real = 0
                     else:
@@ -84,7 +98,7 @@ def index():
                     lista_datos.append({
                         'Periodo': t, 
                         'Saldo Inicial': saldo, 
-                        # Mostramos 0 en la semana 1 visualmente, a partir de la 2 mostramos 'a'
+                        # Mostramos 0 en la semana 1 visualmente, a partir de la 2 mostramos a
                         'Aporte': a if t > 1 else 0, 
                         'Interés': interes, 
                         'Saldo Final': saldo_fin
@@ -96,13 +110,11 @@ def index():
                 tabla_html = df.to_html(classes='table table-striped table-hover', 
                                       float_format=lambda x: f"${x:,.2f}", index=False)
 
-                # 4. Generar Gráfica
+                # Generar Gráfica
                 plt.figure(figsize=(8, 4))
                 plt.plot(df['Periodo'], df['Saldo Final'], label='Con Interés Compuesto', color='green')
-                # Ajustamos la linea gris para que cuadre con la logica n-1
                 plt.plot(df['Periodo'], [v0 + (a * (t-1) if t>0 else 0) for t in df['Periodo']], '--', label='Sin Interés', color='gray')
                 
-                # Título dinámico con la frecuencia
                 plt.title(f'Proyección {freq_nombre} a {n} periodos')
                 plt.xlabel(f'Periodo ({freq_nombre})')
                 plt.ylabel('Monto Acumulado ($)')
@@ -126,6 +138,7 @@ def index():
     # Pasamos freq_nombre al template
     return render_template('index.html', 
                            tasa=resultado,
+                           tasa_anual=resultado_anual,
                            frecuencia_nombre=freq_nombre,
                            tabla=tabla_html, 
                            grafica=imagen_grafica, 
