@@ -12,6 +12,7 @@ from scipy import optimize
 app = Flask(__name__)
 
 # --- TU LÓGICA MATEMÁTICA ---
+# Funcion para encontrar la tasa de interés
 def funcion_interes(i, v0, a, n, vf_deseado):
     if i == 0: 
         return (v0 + a * n) - vf_deseado
@@ -37,9 +38,22 @@ def index():
             # 2. Calcular con Scipy
             # Buscamos tasa entre 0.0001% y 100%
             tasa = optimize.bisect(funcion_interes, 1e-6, 1.0, args=(v0, a, n, vf))
+            # Deposito inicial minimo $50, aporte minimo $5
+            if v0 < 50:
+                    error = "El depósito inicial debe ser de al menos $50."
+            elif a < 5:
+                    error = "El aporte periódico debe ser de al menos $5."
+            elif vf <= v0:
+                    error = "La meta debe ser mayor al depósito inicial."
+            elif n <= 0:
+                    error = "El número de periodos debe ser mayor a cero."
+            # 2. Calcular con metodo de la bisección la tasa de interés
+            # Buscamos tasa entre 0.000001% y 100%
+            tasa = optimize.bisect(funcion_interes, 1e-6, 1, args=(v0, a, n, vf))
             tasa_porcentaje = round(tasa * 100, 4)
 
             # 3. Generar Tabla con Pandas
+            # 3. Generar Tabla de Amortización
             lista_datos = []
             saldo = v0
             sin_int = v0
