@@ -27,7 +27,7 @@
                 <form method="POST" id="calcForm">
                     <div class="mb-3">
                         <label>Monto Inicial ($)</label>
-                        <input type="number" step="any" name="v0" id="v0" class="form-control numeric" required placeholder="Ej: 1000">
+                        <input type="number" step="any" name="v0" id="v0" class="form-control numeric money-limit" required placeholder="Ej: 1000">
                     </div>
 
                     <div class="mb-3">
@@ -42,7 +42,7 @@
 
                     <div class="mb-3">
                         <label>Aporte Periódico ($)</label>
-                        <input type="number" step="any" name="aporte" id="aporte" class="form-control numeric" required placeholder="Ej: 100">
+                        <input type="number" step="any" name="aporte" id="aporte" class="form-control numeric money-limit" required placeholder="Ej: 100">
                     </div>
                     
                     <div class="mb-3">
@@ -52,7 +52,7 @@
                     
                     <div class="mb-3">
                         <label>Meta Final Deseada ($)</label>
-                        <input type="number" step="any" name="vf" id="vf" class="form-control numeric" required placeholder="Ej: 2500">
+                        <input type="number" step="any" name="vf" id="vf" class="form-control numeric money-limit" required placeholder="Ej: 2500">
                     </div>
                     <button type="submit" class="btn btn-primary w-100">Calcular Tasa Necesaria</button>
                 </form>
@@ -96,11 +96,13 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
+// --- CONFIGURACIÓN ---
+const MAX_WEALTH = 490800000000; // Límite de Elon Musk
+
 const alertPlaceholder = document.getElementById('alertPlaceholder');
 let alertTimeout = null;
 
-function showBootstrapAlert(message, type = 'warning', timeout = 3500) {
-    // Limpia la alerta anterior
+function showBootstrapAlert(message, type = 'warning', timeout = 4000) {
     clearTimeout(alertTimeout);
     alertPlaceholder.innerHTML = `
         <div class="alert alert-${type} alert-dismissible fade show" role="alert">
@@ -108,7 +110,6 @@ function showBootstrapAlert(message, type = 'warning', timeout = 3500) {
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     `;
-    // Auto-cerrar después de timeout ms
     alertTimeout = setTimeout(() => {
         const node = alertPlaceholder.querySelector('.alert');
         if (node) {
@@ -118,113 +119,100 @@ function showBootstrapAlert(message, type = 'warning', timeout = 3500) {
     }, timeout);
 }
 
-// Keys permitidas: dígitos, punto, comas (que convertimos), teclas de control
+// Keys permitidas: dígitos, punto, comas, control
 function isAllowedKey(event) {
     const allowedControlKeys = [
         'Backspace','ArrowLeft','ArrowRight','Delete','Tab','Home','End'
     ];
     if (allowedControlKeys.includes(event.key)) return true;
-    // Digits
     if (/^[0-9]$/.test(event.key)) return true;
-    // Punto y coma (coma convertimos a punto en input)
     if (event.key === '.' || event.key === ',') return true;
     return false;
 }
 
 function sanitizeValue(value, allowDecimal = true) {
-    // Reemplaza comas por punto
     value = value.replace(/,/g, '.');
-    // Elimina cualquier carácter que no sea dígito o punto
     if (allowDecimal) {
         value = value.replace(/[^0-9.]/g, '');
-        // Evita múltiples puntos: deja solo el primero
         const parts = value.split('.');
         if (parts.length > 1) {
             value = parts[0] + '.' + parts.slice(1).join('');
         }
     } else {
-        // Para campos enteros: elimina todo lo que no sea dígito
         value = value.replace(/[^0-9]/g, '');
     }
     return value;
 }
 
-// Asociamos a los inputs numéricos (decimales permitidos)
+// 1. INPUTS NUMÉRICOS (Lógica combinada: Pobreza + Musk)
 document.querySelectorAll('input.numeric').forEach(inp => {
-    // Keydown: bloquear teclas no permitidas
+    // Keydown: Bloqueo de teclas invalidas
     inp.addEventListener('keydown', (e) => {
         if (!isAllowedKey(e)) {
             e.preventDefault();
-            showBootstrapAlert('No se permiten letras ni símbolos. Usa solo números y punto decimal.', 'warning');
+            showBootstrapAlert('Solo se permiten números y punto decimal.', 'warning');
         } else {
-            // Bloquear signos + y - y e/E explícitamente en keydown
             if (e.key === '+' || e.key === '-' || e.key.toLowerCase() === 'e') {
                 e.preventDefault();
-                showBootstrapAlert('No se permiten +, - ni notación científica (e).', 'warning');
+                showBootstrapAlert('No se permiten +, - ni notación científica.', 'warning');
             }
         }
     });
 
-    // Input: sanitizar valor (por ejemplo pegar texto)
-    inp.addEventListener('input', (e) => {
-        const original = inp.value;
+    // Input: Validaciones lógicas en tiempo real
+    inp.addEventListener('input', function() {
+        // A) Validar Pobreza (Bloqueo de ceros a la izquierda)
+        if (/^00/.test(this.value)) {
+            showBootstrapAlert('¡Nadie puede ser tan pobre! (No pongas tantos ceros)', 'danger');
+            this.value = "0"; // Lo regresa a un solo cero
+            return; // Salimos para no evaluar lo demás
+        }
+
+        // B) Sanitización normal
+        const original = this.value;
         const cleaned = sanitizeValue(original, true);
 
         if (original !== cleaned) {
-            inp.value = cleaned;
-            showBootstrapAlert('Entrada corregida: solo se aceptan números y un punto decimal. Las comas se convirtieron a punto.', 'warning');
+            this.value = cleaned;
+            showBootstrapAlert('Entrada corregida: caracteres inválidos eliminados.', 'warning');
         }
 
-        // Evitar valor negativo (al pegar algo con -)
-        if (inp.value.startsWith('-')) {
-            inp.value = inp.value.replace(/-/g, '');
-            showBootstrapAlert('No se permiten números negativos.', 'danger');
+        // C) Validar Límite Elon Musk (Solo si tiene la clase money-limit)
+        if (this.classList.contains('money-limit')) {
+            const numericVal = parseFloat(cleaned);
+            if (numericVal > MAX_WEALTH) {
+                this.value = MAX_WEALTH; // Truncamos al máximo
+                showBootstrapAlert('¡Alto ahí! El valor no puede superar los $490.800 Millones (Estimado de Elon Musk).', 'danger');
+            }
         }
     });
 });
 
-// Para campos que deben ser enteros (periodos)
+// 2. INPUTS ENTEROS (Periodos)
 document.querySelectorAll('input.numeric-int').forEach(inp => {
     inp.addEventListener('keydown', (e) => {
         if (!isAllowedKey(e)) {
             e.preventDefault();
-            showBootstrapAlert('Este campo solo acepta números enteros (sin punto).', 'warning');
+            showBootstrapAlert('Este campo solo acepta números enteros.', 'warning');
         } else {
-            // bloquear punto/coma, e, +, -
             if (e.key === '.' || e.key === ',' || e.key === '+' || e.key === '-' || e.key.toLowerCase() === 'e') {
                 e.preventDefault();
-                showBootstrapAlert('Este campo solo acepta números enteros. No use punto, coma, +, - ni notación científica.', 'warning');
+                showBootstrapAlert('Este campo solo acepta números enteros.', 'warning');
             }
         }
     });
 
-    inp.addEventListener('input', (e) => {
-        const original = inp.value;
+    inp.addEventListener('input', function() {
+        const original = this.value;
         const cleaned = sanitizeValue(original, false);
-
         if (original !== cleaned) {
-            inp.value = cleaned;
-            showBootstrapAlert('Entrada corregida: solo números enteros permitidos.', 'warning');
+            this.value = cleaned;
+            showBootstrapAlert('Entrada corregida: solo enteros.', 'warning');
         }
     });
 });
 
-// Evitar que el formulario se envíe si los campos están vacíos o con un punto solo
-document.getElementById('calcForm').addEventListener('submit', function (e) {
-    const fields = ['v0','aporte','periodos','vf'];
-    for (let name of fields) {
-        const el = document.querySelector(`[name="${name}"]`);
-        if (!el) continue;
-        const val = el.value.trim();
-        if (val === '' || val === '.' ) {
-            e.preventDefault();
-            showBootstrapAlert('Por favor ingresa valores válidos en todos los campos antes de calcular.', 'danger');
-            return false;
-        }
-    }
-});
-
-// 1. CAMBIAR EJEMPLO Y LABEL SEGÚN SELECCIÓN (Semanal, Mensual, Bimestral, Trimestral)
+// 3. SELECTOR DE FRECUENCIA (Cambio dinámico de Label y Placeholder)
 const selector = document.getElementById('selectorFrecuencia');
 const labelPeriodos = document.getElementById('labelPeriodos');
 const inputPeriodos = document.getElementById('periodos');
@@ -255,23 +243,20 @@ if(selector){
     });
 }
 
-// 2. DETECTOR DE POBREZA (BLOQUEO DE CEROS)
-// Aplica a todos los inputs del formulario
-document.querySelectorAll('input').forEach(inp => {
-    inp.addEventListener('input', function() {
-        const valor = this.value;
-        // Regex: Detecta si empieza con 00 (ej: 00...)
-        if (/^00/.test(valor)) {
-            // Muestra tu mensaje personalizado
-            showBootstrapAlert('¡Nadie puede ser tan pobre! (No pongas tantos ceros)', 'danger');
-            
-            // AQUÍ ESTÁ EL CAMBIO:
-            // Borra lo que escribió y lo deja solo en '0'
-            this.value = "0";
+// 4. PREVENIR ENVÍO VACÍO
+document.getElementById('calcForm').addEventListener('submit', function (e) {
+    const fields = ['v0','aporte','periodos','vf'];
+    for (let name of fields) {
+        const el = document.querySelector(`[name="${name}"]`);
+        if (!el) continue;
+        const val = el.value.trim();
+        if (val === '' || val === '.' ) {
+            e.preventDefault();
+            showBootstrapAlert('Por favor ingresa valores válidos en todos los campos.', 'danger');
+            return false;
         }
-    });
+    }
 });
-
 </script>
 </body>
 </html>
