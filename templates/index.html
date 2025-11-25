@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Ahorro MN25B</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<div class="container py-5">
+    <h1 class="text-center mb-4">💰 Calculadora de Interés Real</h1>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card p-4 shadow-sm">
+                <h4>Ingresa tus datos</h4>
+                <form method="POST">
+                    <div class="mb-3">
+                        <label>Monto Inicial ($)</label>
+                        <input type="number" step="any" name="v0" class="form-control" required placeholder="Ej: 1000">
+                    </div>
+                    <div class="mb-3">
+                        <label>Aporte Periódico ($)</label>
+                        <input type="number" step="any" name="aporte" class="form-control" required placeholder="Ej: 100">
+                    </div>
+                    <div class="mb-3">
+                        <label>Número de Periodos (Meses/Semanas)</label>
+                        <input type="number" name="periodos" class="form-control" required placeholder="Ej: 12">
+                    </div>
+                    <div class="mb-3">
+                        <label>Meta Final Deseada ($)</label>
+                        <input type="number" step="any" name="vf" class="form-control" required placeholder="Ej: 2500">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Calcular Tasa Necesaria</button>
+                </form>
+                
+                {% if error %}
+                    <div class="alert alert-danger mt-3">{{ error }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            {% if tasa %}
+                <div class="alert alert-success">
+                    <h3>✅ Tasa Requerida: {{ tasa }}% por periodo</h3>
+                </div>
+
+                <ul class="nav nav-tabs" id="myTab" role="tablist">
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#grafica">Gráfica</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabla">Tabla Detallada</button></li>
+                </ul>
+
+                <div class="tab-content bg-white p-3 border border-top-0">
+                    <div class="tab-pane fade show active" id="grafica">
+                        <img src="data:image/png;base64,{{ grafica }}" class="img-fluid" alt="Gráfica de ahorro">
+                    </div>
+                    <div class="tab-pane fade" id="tabla">
+                        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                            {{ tabla | safe }}
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="alert alert-info">
+                    Ingresa los datos a la izquierda para ver el análisis numérico.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
