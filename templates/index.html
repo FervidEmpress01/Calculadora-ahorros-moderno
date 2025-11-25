@@ -6,6 +6,7 @@
     <title>Calculadora de Ahorro MN25B</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        /* Pequeño estilo para la alerta flotante */
         #alertPlaceholder .alert {
             box-shadow: 0 4px 14px rgba(0,0,0,0.08);
         }
@@ -20,39 +21,39 @@
         <div class="col-md-4">
             <div class="card p-4 shadow-sm">
                 <h4>Ingresa tus datos</h4>
+
                 <div id="alertPlaceholder"></div>
 
                 <form method="POST" id="calcForm">
                     <div class="mb-3">
                         <label>Monto Inicial ($)</label>
-                        <input type="number" step="any" name="v0" id="v0" class="form-control numeric money-limit" required placeholder="Ej: 1000" value="{{ request.form.v0 }}" max="490800000000">
+                        <input type="number" step="any" name="v0" id="v0" class="form-control numeric" required placeholder="Ej: 1000">
                     </div>
 
                     <div class="mb-3">
-                        <label>Aporte Periódico ($)</label>
-                        <input type="number" step="any" name="aporte" id="aporte" class="form-control numeric money-limit" required placeholder="Ej: 100" value="{{ request.form.aporte }}" max="490800000000">
-                    </div>
-
-                    <div class="mb-3">
-                        <label>Frecuencia de Aporte</label>
-                        <select name="frecuencia" id="selectorFrecuencia" class="form-select">
-                            <option value="Semanal" selected>Semanal</option>
-                            <option value="Mensual">Mensual</option>
-                            <option value="Bimestral">Bimestral</option>
-                            <option value="Trimestral">Trimestral</option>
+                        <label>Frecuencia del Periodo</label>
+                        <select id="selectorFrecuencia" class="form-select">
+                            <option value="semanal">Semanal</option>
+                            <option value="mensual" selected>Mensual</option>
+                            <option value="bimestral">Bimestral</option>
+                            <option value="trimestral">Trimestral</option>
                         </select>
                     </div>
 
                     <div class="mb-3">
-                        <label id="labelPeriodos">Número de Semanas</label>
-                        <input type="number" name="periodos" id="periodos" class="form-control numeric-int" required placeholder="Ej: 52" value="{{ request.form.periodos }}">
+                        <label>Aporte Periódico ($)</label>
+                        <input type="number" step="any" name="aporte" id="aporte" class="form-control numeric" required placeholder="Ej: 100">
                     </div>
-
+                    
+                    <div class="mb-3">
+                        <label id="labelPeriodos">Número de Meses</label>
+                        <input type="number" name="periodos" id="periodos" class="form-control numeric-int" required placeholder="Ej: 12">
+                    </div>
+                    
                     <div class="mb-3">
                         <label>Meta Final Deseada ($)</label>
-                        <input type="number" step="any" name="vf" id="vf" class="form-control numeric money-limit" required placeholder="Ej: 2500" value="{{ request.form.vf }}" max="490800000000">
+                        <input type="number" step="any" name="vf" id="vf" class="form-control numeric" required placeholder="Ej: 2500">
                     </div>
-
                     <button type="submit" class="btn btn-primary w-100">Calcular Tasa Necesaria</button>
                 </form>
                 
@@ -65,7 +66,7 @@
         <div class="col-md-8">
             {% if tasa %}
                 <div class="alert alert-success">
-                    <h3>✅ Tasa {{ frecuencia_nombre }} Requerida: {{ tasa }}%</h3>
+                    <h3>✅ Tasa Requerida: {{ tasa }}% por periodo</h3>
                 </div>
 
                 <ul class="nav nav-tabs" id="myTab" role="tablist">
@@ -74,7 +75,7 @@
                 </ul>
 
                 <div class="tab-content bg-white p-3 border border-top-0">
-                    <div class="tab-pane fade show active text-center" id="grafica">
+                    <div class="tab-pane fade show active" id="grafica">
                         <img src="data:image/png;base64,{{ grafica }}" class="img-fluid" alt="Gráfica de ahorro">
                     </div>
                     <div class="tab-pane fade" id="tabla">
@@ -95,13 +96,11 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-// --- CONFIGURACIÓN ---
-const MAX_WEALTH = 490800000000; // 490.800 Millones
-
 const alertPlaceholder = document.getElementById('alertPlaceholder');
 let alertTimeout = null;
 
-function showBootstrapAlert(message, type = 'warning', timeout = 4000) {
+function showBootstrapAlert(message, type = 'warning', timeout = 3500) {
+    // Limpia la alerta anterior
     clearTimeout(alertTimeout);
     alertPlaceholder.innerHTML = `
         <div class="alert alert-${type} alert-dismissible fade show" role="alert">
@@ -109,6 +108,7 @@ function showBootstrapAlert(message, type = 'warning', timeout = 4000) {
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     `;
+    // Auto-cerrar después de timeout ms
     alertTimeout = setTimeout(() => {
         const node = alertPlaceholder.querySelector('.alert');
         if (node) {
@@ -118,101 +118,160 @@ function showBootstrapAlert(message, type = 'warning', timeout = 4000) {
     }, timeout);
 }
 
+// Keys permitidas: dígitos, punto, comas (que convertimos), teclas de control
 function isAllowedKey(event) {
-    const allowedControlKeys = ['Backspace','ArrowLeft','ArrowRight','Delete','Tab','Home','End'];
+    const allowedControlKeys = [
+        'Backspace','ArrowLeft','ArrowRight','Delete','Tab','Home','End'
+    ];
     if (allowedControlKeys.includes(event.key)) return true;
+    // Digits
     if (/^[0-9]$/.test(event.key)) return true;
+    // Punto y coma (coma convertimos a punto en input)
     if (event.key === '.' || event.key === ',') return true;
     return false;
 }
 
 function sanitizeValue(value, allowDecimal = true) {
+    // Reemplaza comas por punto
     value = value.replace(/,/g, '.');
+    // Elimina cualquier carácter que no sea dígito o punto
     if (allowDecimal) {
         value = value.replace(/[^0-9.]/g, '');
+        // Evita múltiples puntos: deja solo el primero
         const parts = value.split('.');
         if (parts.length > 1) {
             value = parts[0] + '.' + parts.slice(1).join('');
         }
     } else {
+        // Para campos enteros: elimina todo lo que no sea dígito
         value = value.replace(/[^0-9]/g, '');
     }
     return value;
 }
 
-// 1. VALIDACIÓN CAMPOS NUMÉRICOS (DECIMALES)
+// Asociamos a los inputs numéricos (decimales permitidos)
 document.querySelectorAll('input.numeric').forEach(inp => {
+    // Keydown: bloquear teclas no permitidas
     inp.addEventListener('keydown', (e) => {
         if (!isAllowedKey(e)) {
             e.preventDefault();
-            showBootstrapAlert('Solo se permiten números y punto decimal.', 'warning');
+            showBootstrapAlert('No se permiten letras ni símbolos. Usa solo números y punto decimal.', 'warning');
         } else {
+            // Bloquear signos + y - y e/E explícitamente en keydown
             if (e.key === '+' || e.key === '-' || e.key.toLowerCase() === 'e') {
                 e.preventDefault();
-                showBootstrapAlert('No se permiten +, - ni notación científica.', 'warning');
+                showBootstrapAlert('No se permiten +, - ni notación científica (e).', 'warning');
             }
         }
     });
-    
+
+    // Input: sanitizar valor (por ejemplo pegar texto)
     inp.addEventListener('input', (e) => {
         const original = inp.value;
         const cleaned = sanitizeValue(original, true);
-        
-        // Validación de caracteres extraños
+
         if (original !== cleaned) {
             inp.value = cleaned;
-            showBootstrapAlert('Entrada corregida: caracteres inválidos eliminados.', 'warning');
+            showBootstrapAlert('Entrada corregida: solo se aceptan números y un punto decimal. Las comas se convirtieron a punto.', 'warning');
         }
 
-        // --- VALIDACIÓN DE ELON MUSK (LÍMITE MÁXIMO) ---
-        if (inp.classList.contains('money-limit')) {
-            const numericVal = parseFloat(cleaned);
-            if (numericVal > MAX_WEALTH) {
-                inp.value = MAX_WEALTH; // Lo truncamos al máximo
-                showBootstrapAlert('¡Alto ahí! El valor no puede superar los $490.800 Millones (Estimado de Elon Musk).', 'danger');
-            }
+        // Evitar valor negativo (al pegar algo con -)
+        if (inp.value.startsWith('-')) {
+            inp.value = inp.value.replace(/-/g, '');
+            showBootstrapAlert('No se permiten números negativos.', 'danger');
         }
     });
 });
 
-// 2. VALIDACIÓN ENTEROS (PERIODOS)
+// Para campos que deben ser enteros (periodos)
 document.querySelectorAll('input.numeric-int').forEach(inp => {
     inp.addEventListener('keydown', (e) => {
         if (!isAllowedKey(e)) {
             e.preventDefault();
-            showBootstrapAlert('Solo números enteros.', 'warning');
+            showBootstrapAlert('Este campo solo acepta números enteros (sin punto).', 'warning');
         } else {
+            // bloquear punto/coma, e, +, -
             if (e.key === '.' || e.key === ',' || e.key === '+' || e.key === '-' || e.key.toLowerCase() === 'e') {
                 e.preventDefault();
-                showBootstrapAlert('Este campo solo acepta números enteros.', 'warning');
+                showBootstrapAlert('Este campo solo acepta números enteros. No use punto, coma, +, - ni notación científica.', 'warning');
             }
         }
     });
+
     inp.addEventListener('input', (e) => {
         const original = inp.value;
         const cleaned = sanitizeValue(original, false);
+
         if (original !== cleaned) {
             inp.value = cleaned;
-            showBootstrapAlert('Entrada corregida: solo enteros.', 'warning');
+            showBootstrapAlert('Entrada corregida: solo números enteros permitidos.', 'warning');
         }
     });
 });
 
-// 3. CAMBIO DE TÍTULO SEGÚN FRECUENCIA
-const selector = document.getElementById('selectorFrecuencia');
-const label = document.getElementById('labelPeriodos');
-// Solo dejamos los que están en el HTML
-const mapeoNombres = {
-    'Semanal': 'Semanas', 
-    'Mensual': 'Meses',
-    'Bimestral': 'Bimestres', 
-    'Trimestral': 'Trimestres'
-};
-
-selector.addEventListener('change', function() {
-    const seleccion = this.value;
-    label.textContent = 'Número de ' + mapeoNombres[seleccion];
+// Evitar que el formulario se envíe si los campos están vacíos o con un punto solo
+document.getElementById('calcForm').addEventListener('submit', function (e) {
+    const fields = ['v0','aporte','periodos','vf'];
+    for (let name of fields) {
+        const el = document.querySelector(`[name="${name}"]`);
+        if (!el) continue;
+        const val = el.value.trim();
+        if (val === '' || val === '.' ) {
+            e.preventDefault();
+            showBootstrapAlert('Por favor ingresa valores válidos en todos los campos antes de calcular.', 'danger');
+            return false;
+        }
+    }
 });
+
+// 1. CAMBIAR EJEMPLO Y LABEL SEGÚN SELECCIÓN (Semanal, Mensual, Bimestral, Trimestral)
+const selector = document.getElementById('selectorFrecuencia');
+const labelPeriodos = document.getElementById('labelPeriodos');
+const inputPeriodos = document.getElementById('periodos');
+
+if(selector){
+    selector.addEventListener('change', function() {
+        // Borramos el valor actual para no confundir
+        inputPeriodos.value = ''; 
+        
+        switch(this.value) {
+            case 'semanal':
+                labelPeriodos.textContent = "Número de Semanas";
+                inputPeriodos.placeholder = "Ej: 52";
+                break;
+            case 'mensual':
+                labelPeriodos.textContent = "Número de Meses";
+                inputPeriodos.placeholder = "Ej: 12";
+                break;
+            case 'bimestral':
+                labelPeriodos.textContent = "Número de Bimestres";
+                inputPeriodos.placeholder = "Ej: 6";
+                break;
+            case 'trimestral':
+                labelPeriodos.textContent = "Número de Trimestres";
+                inputPeriodos.placeholder = "Ej: 4";
+                break;
+        }
+    });
+}
+
+// 2. DETECTOR DE POBREZA (BLOQUEO DE CEROS)
+// Aplica a todos los inputs del formulario
+document.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('input', function() {
+        const valor = this.value;
+        // Regex: Detecta si empieza con 00 (ej: 00...)
+        if (/^00/.test(valor)) {
+            // Muestra tu mensaje personalizado
+            showBootstrapAlert('¡Nadie puede ser tan pobre! (No pongas tantos ceros)', 'danger');
+            
+            // AQUÍ ESTÁ EL CAMBIO:
+            // Borra lo que escribió y lo deja solo en '0'
+            this.value = "0";
+        }
+    });
+});
+
 </script>
 </body>
 </html>
